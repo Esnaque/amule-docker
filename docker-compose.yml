@@ -1,0 +1,61 @@
+services:
+  amuled:
+    build: .
+    image: amule:3.0.0
+    container_name: amuled
+    command: ["amuled"]
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${EMULE__PORT:-4662}:${EMULE__PORT:-4662}/tcp"
+      - "${EMULE__UDPPORT:-4672}:${EMULE__UDPPORT:-4672}/udp"
+      # Uncomment to use a remote GUI (amulegui) from outside the host:
+      # - "${EXTERNALCONNECT__ECPORT:-4712}:${EXTERNALCONNECT__ECPORT:-4712}/tcp"
+    volumes:
+      - "${AMULE_CONFIG_DIR:-./data/config}:/config"
+      - "${AMULE_INCOMING_DIR:-./data/incoming}:/incoming"
+      - "${AMULE_TEMP_DIR:-./data/temp}:/temp"
+      # Mount here any category targets (CATEGORY_N_INCOMING) that live
+      # outside /incoming, e.g.:
+      # - /mnt/nas/video/movies:/incoming/movies
+    healthcheck:
+      test: ["CMD-SHELL", "amulecmd -h 127.0.0.1 -p \"$${EXTERNALCONNECT__ECPORT:-4712}\" -P \"$$EXTERNALCONNECT__ECPASSWORD\" -c status > /dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      autoheal: "true"
+
+  amuleweb:
+    image: amule:3.0.0
+    container_name: amuleweb
+    command: ["amuleweb"]
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      amuled:
+        condition: service_healthy
+    ports:
+      - "${WEBSERVER__PORT:-4711}:${WEBSERVER__PORT:-4711}/tcp"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:$${WEBSERVER__PORT:-4711}/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      autoheal: "true"
+
+  # Docker/Compose doesn't restart "unhealthy" containers on its own:
+  # autoheal watches containers labeled autoheal=true and restarts them.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: autoheal
+    restart: unless-stopped
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

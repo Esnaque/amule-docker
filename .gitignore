@@ -1,0 +1,5 @@
+# Local secrets (EC and web passwords)
+.env
+
+# Container runtime data (config, downloads, temp files)
+data/
