@@ -75,6 +75,18 @@ CATEGORY_2_INCOMING=/incoming/tvshows
 | `AMULE_INCOMING_DIR` | `/incoming` | completed downloads                 |
 | `AMULE_TEMP_DIR`     | `/temp`     | in-progress downloads (.part)       |
 
+`AMULE_TEMP_DIR` must point at a **dedicated** directory, never at a shared one
+such as the host's `/tmp`: the entrypoint chowns `/temp` recursively, which
+would give away every file in it to `PUID`:`PGID`. Keep it on local disk too —
+`.part` files get constant writes, and on a network share that is both slow and
+fragile.
+
+`CATEGORY_*_INCOMING` paths are paths **inside the container** (e.g.
+`/incoming/movies`), not host paths. A category pointing outside `/incoming`
+needs its own bind mount, or its downloads end up in the container's writable
+layer and vanish when it is recreated — the entrypoint warns when it detects
+this.
+
 ## Ports
 
 | Port     | Protocol  | Service  | Use                                    |
@@ -98,6 +110,14 @@ The processes run as the `amule` user with the `PUID`/`PGID` from `.env`
 (default 1000:1000). The entrypoint chowns `/config` and `/temp` recursively,
 and `/incoming` non-recursively (it can be huge); if you migrate an existing
 `/incoming` with a different owner, fix the permissions by hand.
+
+Those chowns are best-effort. On network filesystems (NFS with `root_squash`,
+CIFS with `uid`/`gid` mount options) `chown` fails with `Operation not
+permitted` even as root; the entrypoint logs a `WARN` and carries on. What it
+does require is that the `amule` user can actually write to `/config`, `/temp`
+and `/incoming` — it probes each one and exits with an explicit error if not.
+If you hit that error, set `PUID`/`PGID` to the owner of the host directory
+(`stat -c '%u:%g' /your/incoming`) instead of chowning the share.
 
 ## License
 

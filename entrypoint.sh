@@ -23,6 +23,31 @@ log() { echo "[entrypoint] $*"; }
 
 md5() { printf '%s' "$1" | md5sum | cut -d' ' -f1; }
 
+# try_chown <chown args...> <path>
+# /incoming, /temp and the category targets often live on network filesystems
+# (NFS with root_squash maps root to nobody, CIFS fixes uid/gid at mount time)
+# where chown returns EPERM even for root. Ownership is a convenience, not a
+# requirement, so warn and carry on instead of aborting under `set -e`.
+try_chown() {
+    chown "$@" 2>/dev/null \
+        || log "WARN: chown failed on ${*: -1} (network filesystem?); leaving ownership as-is"
+}
+
+# check_writable <path>
+# What actually matters is whether the amule user can write, so probe it for
+# real: test -w lies on NFS/CIFS with root_squash or ACLs in play.
+check_writable() {
+    local path="$1" probe="$1/.amule-write-test.$$"
+    if gosu amule touch "$probe" 2>/dev/null; then
+        rm -f "$probe"
+        return 0
+    fi
+    log "ERROR: $path is not writable by uid $PUID:$PGID."
+    log "       Set PUID/PGID in .env to the owner of the host directory, or fix"
+    log "       its permissions / the uid,gid mount options."
+    exit 1
+}
+
 # set_conf <file> <Section> <Key> <Value>
 # Replaces the key within its section (case-insensitive) or appends it;
 # creates the section at the end of the file if it doesn't exist.
@@ -138,7 +163,13 @@ apply_categories() {
         var="CATEGORY_${n}_PRIORITY"; [[ -n "${!var:-}" ]] && set_conf "$CONF" "$sec" "Priority" "${!var}"
         var="CATEGORY_${n}_COMMENT";  [[ -n "${!var:-}" ]] && set_conf "$CONF" "$sec" "Comment" "${!var}"
         mkdir -p "$incoming"
-        chown amule:amule "$incoming"
+        try_chown amule:amule "$incoming"
+        # Same device as / means the path isn't a bind mount: it lives in the
+        # container's own writable layer and is lost when it is recreated.
+        if [[ "$(stat -c %d /)" == "$(stat -c %d "$incoming")" ]]; then
+            log "WARN: $incoming is not a mounted volume; downloads sent there are lost"
+            log "      when the container is recreated. Add a bind mount for it in docker-compose.yml."
+        fi
         n=$((n + 1))
     done
     # Count is only touched when categories are defined via environment;
@@ -166,8 +197,12 @@ case "$ROLE" in
         apply_env_overrides
         setup_user
         apply_categories
-        chown -R amule:amule "$CONFIG_DIR" /temp
-        chown amule:amule /incoming
+        try_chown -R amule:amule "$CONFIG_DIR"
+        try_chown -R amule:amule /temp
+        try_chown amule:amule /incoming
+        check_writable "$CONFIG_DIR"
+        check_writable /temp
+        check_writable /incoming
         log "Starting amuled (config in $CONFIG_DIR)"
         exec gosu amule amuled --config-dir="$CONFIG_DIR"
         ;;

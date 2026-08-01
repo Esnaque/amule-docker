@@ -29,6 +29,11 @@ This is not the aMule source code: just the Docker packaging.
     amule.conf, and creates/chowns the target folders. In aMule 3 the key is
     `Color` (old installs wrote `Colour`).
   - Adjusts the `amule` user to `PUID`/`PGID` and execs with gosu.
+  - All chowns go through `try_chown` (best-effort: they only WARN), because on
+    NFS/CIFS `chown` returns EPERM even for root and aborting under `set -e`
+    turned into a restart loop. Writability is what's enforced instead:
+    `check_writable` probes `/config`, `/temp` and `/incoming` with a real
+    `touch` as the amule user and exits with an actionable message.
   - amuleweb role: waits until amuled answers over EC and launches
     `amuleweb --host=amuled ...` with plaintext passwords (the hash goes in the
     conf, the CLI wants plaintext).

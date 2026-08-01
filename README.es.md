@@ -74,6 +74,18 @@ CATEGORY_2_INCOMING=/incoming/tvshows
 | `AMULE_INCOMING_DIR` | `/incoming` | descargas completadas              |
 | `AMULE_TEMP_DIR`     | `/temp`     | descargas en curso (.part)         |
 
+`AMULE_TEMP_DIR` tiene que apuntar a un directorio **dedicado**, nunca a uno
+compartido como el `/tmp` del host: el entrypoint hace `chown` recursivo de
+`/temp`, lo que regalaría todos los ficheros que hubiera dentro a
+`PUID`:`PGID`. Mantenlo además en disco local: los `.part` reciben escrituras
+constantes y en un recurso de red eso es lento y frágil.
+
+Las rutas de `CATEGORY_*_INCOMING` son rutas **dentro del contenedor** (p. ej.
+`/incoming/movies`), no del host. Una categoría que apunte fuera de `/incoming`
+necesita su propio bind mount, o sus descargas acaban en la capa de escritura
+del contenedor y se pierden al recrearlo — el entrypoint avisa cuando lo
+detecta.
+
 ## Puertos
 
 | Puerto   | Protocolo | Servicio | Uso                                    |
@@ -97,6 +109,15 @@ Los procesos corren como el usuario `amule` con el `PUID`/`PGID` del `.env`
 (por defecto 1000:1000). El entrypoint hace `chown` recursivo de `/config` y
 `/temp`, y no recursivo de `/incoming` (puede ser enorme); si migras un
 `/incoming` existente con otro propietario, ajusta los permisos a mano.
+
+Esos `chown` son best-effort. En sistemas de archivos de red (NFS con
+`root_squash`, CIFS con opciones `uid`/`gid`) `chown` falla con `Operation not
+permitted` incluso siendo root; el entrypoint registra un `WARN` y continúa.
+Lo que sí exige es que el usuario `amule` pueda escribir de verdad en
+`/config`, `/temp` e `/incoming`: comprueba cada uno y sale con un error
+explícito si no puede. Si te topas con ese error, pon `PUID`/`PGID` al
+propietario del directorio del host (`stat -c '%u:%g' /tu/incoming`) en lugar
+de hacer `chown` al recurso compartido.
 
 ## Licencia
 
