@@ -1,16 +1,20 @@
 # aMule 3 on Docker
 
-Docker Compose stack to run aMule 3.0.0 (amuled + amuleweb) on a server.
+Docker Compose stack to run aMule 3.0.1 (amuled + amuleweb) on a server.
 This is not the aMule source code: just the Docker packaging.
 
 ## Architecture
 
-- `Dockerfile` — multi-stage; builds aMule 3.0.0 from `https://github.com/amule-org/amule`
-  (tag `3.0.0`, args `AMULE_REPO`/`AMULE_VERSION`) with CMake on debian:trixie-slim.
+- `Dockerfile` — multi-stage; builds aMule 3.0.1 from `https://github.com/amule-org/amule`
+  (tag `3.0.1`, args `AMULE_REPO`/`AMULE_VERSION`) with CMake on debian:trixie-slim.
   It must be trixie: aMule 3 requires wxWidgets with `wxUSE_WEBREQUEST=1` (libcurl
   backend) and bookworm's wx doesn't ship with it enabled.
   Binaries: amuled, amuleweb, amulecmd. NOTE: the `amule-project/amule` repo is
   frozen; the right one is `amule-org/amule`.
+  Two 3.0.1-specific configure flags: `-DENABLE_IP2COUNTRY=NO` (defaults to ON
+  in 3.0.1 and hard-fails without libmaxminddb; the country flags are GUI-only,
+  neither amuled nor the WebUI use them) and `-DDEFAULT_VERSION_CHECK=OFF`
+  (upstream's packager recommendation; only seeds `[eMule] NewVersionCheck`).
 - `entrypoint.sh` — a single entrypoint with roles (`amuled` | `amuleweb`):
   - Generates a seed `amule.conf` if it doesn't exist (sections with canonical
     spelling).

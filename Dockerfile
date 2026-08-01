@@ -23,10 +23,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ARG AMULE_REPO=https://github.com/amule-org/amule
-ARG AMULE_VERSION=3.0.0
+ARG AMULE_VERSION=3.0.1
 
 RUN git clone --depth 1 --branch "${AMULE_VERSION}" "${AMULE_REPO}" /src
 
+# ENABLE_IP2COUNTRY defaults to ON since 3.0.1 and hard-fails at configure
+# without libmaxminddb; the country flags are GUI-only (they never reach
+# amuled or the WebUI), so we opt out instead of pulling in the dependency.
+# DEFAULT_VERSION_CHECK=OFF is the upstream recommendation for packagers:
+# it only sets the initial value of [eMule] NewVersionCheck, which can still
+# be flipped with EMULE__NEWVERSIONCHECK=1.
 RUN cmake -B /build /src \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_MONOLITHIC=OFF \
@@ -35,6 +41,8 @@ RUN cmake -B /build /src \
         -DBUILD_WEBSERVER=ON \
         -DBUILD_AMULECMD=ON \
         -DENABLE_UPNP=ON \
+        -DENABLE_IP2COUNTRY=NO \
+        -DDEFAULT_VERSION_CHECK=OFF \
     && cmake --build /build -j"$(nproc)" \
     && DESTDIR=/out cmake --install /build
 

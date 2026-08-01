@@ -1,7 +1,7 @@
 services:
   amuled:
     build: .
-    image: amule:3.0.0
+    image: amule:3.0.1
     container_name: amuled
     command: ["amuled"]
     init: true
@@ -29,7 +29,7 @@ services:
       autoheal: "true"
 
   amuleweb:
-    image: amule:3.0.0
+    image: amule:3.0.1
     container_name: amuleweb
     command: ["amuleweb"]
     init: true

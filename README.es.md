@@ -2,7 +2,7 @@
 
 [English](README.md) | **Español**
 
-Stack de Docker Compose que compila [aMule 3.0.0](https://github.com/amule-org/amule)
+Stack de Docker Compose que compila [aMule 3.0.1](https://github.com/amule-org/amule)
 desde el código fuente y levanta:
 
 - **amuled** — el daemon de aMule (redes eD2k y Kad)
