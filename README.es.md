@@ -2,7 +2,8 @@
 
 [English](README.md) | **Español**
 
-Stack de Docker Compose que compila [aMule 3.0.1](https://github.com/amule-org/amule)
+Stack de Docker Compose que compila [aMule](https://github.com/amule-org/amule)
+(3.0.1 por defecto, [cualquier tag o rama](#qué-versión-de-amule-se-compila))
 desde el código fuente y levanta:
 
 - **amuled** — el daemon de aMule (redes eD2k y Kad)
@@ -21,6 +22,46 @@ docker compose up -d --build
 ```
 
 Interfaz web: http://localhost:4711 (contraseña: `WEBSERVER__PASSWORD`).
+
+## Qué versión de aMule se compila
+
+La imagen se compila desde el código fuente, y `.env` decide qué código:
+
+```
+AMULE_VERSION=3.0.1        # un tag de release...
+AMULE_IMAGE_TAG=3.0.1      # ...y el tag que se le pone a la imagen construida
+```
+
+Para seguir el desarrollo de upstream en vez de una release, apúntalo a una rama:
+
+```
+AMULE_VERSION=master
+AMULE_IMAGE_TAG=master
+AMULE_GIT_REFRESH=2026-08-27
+```
+
+- `AMULE_VERSION` admite cualquier cosa que acepte `git clone --branch`: un tag
+  o una rama.
+- `AMULE_IMAGE_TAG` sólo da nombre a la imagen local. Cámbialo junto con
+  `AMULE_VERSION` para que un build de master no pise tu imagen de release y
+  puedas volver atrás cambiando el tag y haciendo `docker compose up -d`.
+- `AMULE_GIT_REFRESH` es un **invalidador de caché**, necesario sólo con ramas:
+  la capa del `git clone` se cachea como cualquier otra, así que sin cambiar
+  este valor cada rebuild compilaría el mismo commit que clonó la primera vez.
+  Ponle la fecha de hoy (o cualquier valor nuevo) cuando quieras traer commits
+  nuevos. `docker compose build --no-cache amuled` también sirve, pero además
+  recompila todo lo demás desde cero.
+- `AMULE_REPO` (opcional) cambia el repositorio, por si compilas un fork.
+
+De qué commit se construyó una imagen queda registrado dentro de ella:
+
+```sh
+docker exec amuled cat /etc/amule-build-info
+```
+
+Compilar master es compilar código sin probar: guarda una copia de tu carpeta
+`/config` antes de cambiar, porque un aMule más nuevo puede reescribir
+`amule.conf` de formas que el build de release ya no sepa leer.
 
 ## Configuración por variables de entorno
 

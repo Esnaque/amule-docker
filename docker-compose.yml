@@ -1,7 +1,14 @@
 services:
   amuled:
-    build: .
-    image: amule:3.0.1
+    build:
+      context: .
+      args:
+        AMULE_REPO: ${AMULE_REPO:-https://github.com/amule-org/amule}
+        # A tag (3.0.1) or a branch (master) to track upstream
+        AMULE_VERSION: ${AMULE_VERSION:-3.0.1}
+        # Bump when AMULE_VERSION is a branch, or the clone stays cached
+        AMULE_GIT_REFRESH: ${AMULE_GIT_REFRESH:-}
+    image: amule:${AMULE_IMAGE_TAG:-3.0.1}
     container_name: amuled
     command: ["amuled"]
     init: true
@@ -29,7 +36,7 @@ services:
       autoheal: "true"
 
   amuleweb:
-    image: amule:3.0.1
+    image: amule:${AMULE_IMAGE_TAG:-3.0.1}
     container_name: amuleweb
     command: ["amuleweb"]
     init: true

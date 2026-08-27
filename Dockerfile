@@ -23,9 +23,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ARG AMULE_REPO=https://github.com/amule-org/amule
+# Anything git can check out with --branch: a release tag (3.0.1) or a moving
+# branch (master) to build the latest upstream code.
 ARG AMULE_VERSION=3.0.1
+# Cache buster for moving branches: the git clone layer is cached like any
+# other, so without changing this Docker would keep rebuilding the commit it
+# cloned the first time. Change the value (a date, a commit hash, anything) to
+# force a fresh clone. Irrelevant when AMULE_VERSION is a tag.
+ARG AMULE_GIT_REFRESH=
 
-RUN git clone --depth 1 --branch "${AMULE_VERSION}" "${AMULE_REPO}" /src
+RUN git clone --depth 1 --branch "${AMULE_VERSION}" "${AMULE_REPO}" /src \
+    && git -C /src log -1 --format="${AMULE_REPO} ${AMULE_VERSION} %H %cI" \
+        > /amule-build-info \
+    && cat /amule-build-info
 
 # ENABLE_IP2COUNTRY defaults to ON since 3.0.1 and hard-fails at configure
 # without libmaxminddb; the country flags are GUI-only (they never reach
@@ -63,6 +73,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd -m -u 1000 -g amule -d /home/amule amule
 
 COPY --from=build /out/usr/local /usr/local
+# Which repo/ref/commit this image was built from (handy when tracking master)
+COPY --from=build /amule-build-info /etc/amule-build-info
 
 # Verify the binaries have all their libraries resolved
 RUN ldd /usr/local/bin/amuled /usr/local/bin/amuleweb /usr/local/bin/amulecmd \
