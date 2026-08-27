@@ -43,6 +43,9 @@ RUN git clone --depth 1 --branch "${AMULE_VERSION}" "${AMULE_REPO}" /src \
 # DEFAULT_VERSION_CHECK=OFF is the upstream recommendation for packagers:
 # it only sets the initial value of [eMule] NewVersionCheck, which can still
 # be flipped with EMULE__NEWVERSIONCHECK=1.
+# BUILD_AMULEAPI=ON builds the amuleapi daemon (REST API + the new web
+# frontend, installed as share/amule/amuleapi-static). It defaults to NO and
+# only exists on master; on a 3.0.1 build the flag is simply ignored.
 RUN cmake -B /build /src \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_MONOLITHIC=OFF \
@@ -53,6 +56,7 @@ RUN cmake -B /build /src \
         -DENABLE_UPNP=ON \
         -DENABLE_IP2COUNTRY=NO \
         -DDEFAULT_VERSION_CHECK=OFF \
+        -DBUILD_AMULEAPI=ON \
     && cmake --build /build -j"$(nproc)" \
     && DESTDIR=/out cmake --install /build
 
@@ -76,9 +80,18 @@ COPY --from=build /out/usr/local /usr/local
 # Which repo/ref/commit this image was built from (handy when tracking master)
 COPY --from=build /amule-build-info /etc/amule-build-info
 
-# Verify the binaries have all their libraries resolved
+# Verify the binaries have all their libraries resolved. amuleapi is optional:
+# BUILD_AMULEAPI only exists in master (3.0.1 ignores it with a "manually-
+# specified variable was not used" warning), so a release build has no such
+# binary and must not fail here.
 RUN ldd /usr/local/bin/amuled /usr/local/bin/amuleweb /usr/local/bin/amulecmd \
-        | { ! grep "not found"; }
+        | { ! grep "not found"; } \
+    && if [ -x /usr/local/bin/amuleapi ]; then \
+        ldd /usr/local/bin/amuleapi | { ! grep "not found"; }; \
+        echo "amuleapi built (REST API + web frontend available)"; \
+    else \
+        echo "amuleapi not built (only exists in master); the amuleapi service will not work"; \
+    fi
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

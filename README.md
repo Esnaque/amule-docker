@@ -62,6 +62,54 @@ Building master means building untested code: keep a copy of your `/config`
 folder before switching, since a newer aMule may rewrite `amule.conf` in ways
 the release build won't read back.
 
+## The new web UI (amuleapi)
+
+aMule master ships **amuleapi**, a separate daemon serving a JSON REST API,
+a live event stream, and — the visible part — a new web frontend on its own
+port. Upstream deprecates amuleweb in its favour ("may be removed in aMule 3.2
+or later"), but the two run side by side here, so you can keep the old one
+while you try the new one.
+
+It only exists in master, so it takes two things: a master build, and the
+compose profile that starts the container.
+
+```
+AMULE_VERSION=master
+AMULE_IMAGE_TAG=master
+AMULE_GIT_REFRESH=2026-08-27
+COMPOSE_PROFILES=amuleapi
+AMULEAPI_ADMIN_PASSWORD=changeme
+```
+
+```sh
+docker compose up -d --build
+```
+
+The new UI is then at http://localhost:4713 and the old one stays at
+http://localhost:4711.
+
+- `AMULEAPI_ADMIN_PASSWORD` is **required**: amuleapi refuses to listen on
+  anything other than `127.0.0.1` until an admin password is set, and inside a
+  container it has to listen on `0.0.0.0` to be reachable at all.
+- `AMULEAPI_GUEST_PASSWORD` (optional) enables a read-only guest login.
+  Leaving it unset keeps guest access off.
+- `AMULEAPI_PORT` (default 4713) changes the port.
+- Passwords are stored salted and stretched in `/config/amuleapi-passwords`
+  and can't be read back, only replaced — the entrypoint rewrites them from
+  `.env` on every start.
+- Avoid `$` in `AMULEAPI_ADMIN_PASSWORD` and `EXTERNALCONNECT__ECPASSWORD`:
+  the EC password has to be stored in cleartext in `/config/amuleapi.conf`
+  (amuleapi has no `--password` flag on purpose — argv is world-readable via
+  `ps`), and the reader expands `$VAR` in values. The entrypoint warns if it
+  finds one.
+- Without `COMPOSE_PROFILES=amuleapi` the service is simply not started, which
+  is why a plain 3.0.1 setup is unaffected. A 3.0.1 image has no amuleapi
+  binary; if you start the service anyway it exits with an explanatory error
+  instead of crash-looping silently.
+
+Like amuleweb, it is plain HTTP with no TLS: fine on a trusted LAN, otherwise
+put a reverse proxy in front of it.
+
 ## Configuration via environment variables
 
 Any variable in `.env` with the `SECTION__KEY` format is written to
@@ -133,13 +181,16 @@ this.
 | -------- | --------- | -------- | -------------------------------------- |
 | 4662     | TCP       | amuled   | eD2k (open/forward it on your router to get a high ID) |
 | 4672     | UDP       | amuled   | Kad and extended server requests       |
-| 4711     | TCP       | amuleweb | web interface                          |
+| 4711     | TCP       | amuleweb | old web interface                      |
+| 4713     | TCP       | amuleapi | new web UI + REST API (master builds, `COMPOSE_PROFILES=amuleapi`) |
 | 4712     | TCP       | amuled   | EC — internal; uncomment the mapping in the compose file only if you want to use a remote amulegui |
 
 ## Healthchecks
 
 - **amuled**: `amulecmd -c status` against the EC port.
 - **amuleweb**: `curl` against the web interface itself.
+- **amuleapi**: `curl` against `/api/v0/health`, which needs no login and
+  answers without waiting on amuled.
 
 If a healthcheck fails 3 times in a row the container goes `unhealthy` and
 autoheal restarts it.
