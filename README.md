@@ -2,8 +2,9 @@
 
 **English** | [Español](README.es.md)
 
-Docker Compose stack that builds [aMule 3.0.1](https://github.com/amule-org/amule)
-from source and runs:
+Docker Compose stack that builds [aMule](https://github.com/amule-org/amule)
+from source (3.0.1 by default, [any tag or branch](#which-amule-version-gets-built))
+and runs:
 
 - **amuled** — the aMule daemon (eD2k and Kad networks)
 - **amuleweb** — the web interface, connected to amuled over External Connections (EC)
@@ -21,6 +22,45 @@ docker compose up -d --build
 ```
 
 Web interface: http://localhost:4711 (password: `WEBSERVER__PASSWORD`).
+
+## Which aMule version gets built
+
+The image is built from source, and `.env` decides which source:
+
+```
+AMULE_VERSION=3.0.1        # a release tag...
+AMULE_IMAGE_TAG=3.0.1      # ...and the tag given to the built image
+```
+
+To follow upstream development instead of a release, point it at a branch:
+
+```
+AMULE_VERSION=master
+AMULE_IMAGE_TAG=master
+AMULE_GIT_REFRESH=2026-08-27
+```
+
+- `AMULE_VERSION` is anything `git clone --branch` accepts: a tag or a branch.
+- `AMULE_IMAGE_TAG` only names the local image. Change it along with
+  `AMULE_VERSION` so a master build doesn't overwrite your release image and
+  you can roll back by switching the tag back and running `docker compose up -d`.
+- `AMULE_GIT_REFRESH` is a **cache buster**, needed only for branches: the
+  `git clone` layer is cached like any other, so without changing this value
+  every rebuild would compile the same commit it cloned the first time. Set it
+  to today's date (or anything new) whenever you want to pull in new commits.
+  `docker compose build --no-cache amuled` works too, but it also recompiles
+  everything else from scratch.
+- `AMULE_REPO` (optional) changes the repository, in case you build a fork.
+
+Which commit an image was built from is recorded inside it:
+
+```sh
+docker exec amuled cat /etc/amule-build-info
+```
+
+Building master means building untested code: keep a copy of your `/config`
+folder before switching, since a newer aMule may rewrite `amule.conf` in ways
+the release build won't read back.
 
 ## Configuration via environment variables
 

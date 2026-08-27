@@ -5,8 +5,14 @@ This is not the aMule source code: just the Docker packaging.
 
 ## Architecture
 
-- `Dockerfile` — multi-stage; builds aMule 3.0.1 from `https://github.com/amule-org/amule`
-  (tag `3.0.1`, args `AMULE_REPO`/`AMULE_VERSION`) with CMake on debian:trixie-slim.
+- `Dockerfile` — multi-stage; builds aMule from `https://github.com/amule-org/amule`
+  with CMake on debian:trixie-slim. Build args: `AMULE_REPO`, `AMULE_VERSION`
+  (a tag like `3.0.1` or a branch like `master` — anything `git clone --branch`
+  takes) and `AMULE_GIT_REFRESH` (cache buster; the clone layer is cached, so
+  without changing it a branch build keeps recompiling the first commit it
+  cloned). The resolved repo/ref/commit is written to `/etc/amule-build-info`
+  in the runtime image. All three come from `.env` via compose `build.args`,
+  and `AMULE_IMAGE_TAG` names the resulting image.
   It must be trixie: aMule 3 requires wxWidgets with `wxUSE_WEBREQUEST=1` (libcurl
   backend) and bookworm's wx doesn't ship with it enabled.
   Binaries: amuled, amuleweb, amulecmd. NOTE: the `amule-project/amule` repo is
@@ -37,13 +43,14 @@ This is not the aMule source code: just the Docker packaging.
   - amuleweb role: waits until amuled answers over EC and launches
     `amuleweb --host=amuled ...` with plaintext passwords (the hash goes in the
     conf, the CLI wants plaintext).
-- `docker-compose.yml` — services `amuled`, `amuleweb` (same `amule:3.0.0` image,
-  different `command`) and `autoheal` (Docker doesn't restart unhealthy
+- `docker-compose.yml` — services `amuled`, `amuleweb` (same
+  `amule:${AMULE_IMAGE_TAG}` image, different `command`) and `autoheal` (Docker doesn't restart unhealthy
   containers; autoheal does, via the `autoheal=true` label).
 - `.env` / `.env.example` — all variables; `SECTION__KEY` vars reach the
   containers via `env_file`, and compose additionally interpolates `EMULE__PORT`,
-  `EMULE__UDPPORT` and `WEBSERVER__PORT` into the port mappings (single source
-  of truth).
+  `EMULE__UDPPORT` and `WEBSERVER__PORT` into the port mappings, plus the
+  `AMULE_VERSION`/`AMULE_REPO`/`AMULE_GIT_REFRESH`/`AMULE_IMAGE_TAG` build
+  knobs (single source of truth).
 - Docs: `README.md` (English) and `README.es.md` (Spanish) — keep both in sync
   when changing user-facing behavior. Licensed under GPL-2.0 (`LICENSE`).
 
