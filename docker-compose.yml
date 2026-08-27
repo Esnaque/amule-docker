@@ -56,6 +56,39 @@ services:
     labels:
       autoheal: "true"
 
+  # The new web UI (aMule master only): a REST API + SSE daemon that also
+  # serves its own frontend at /. Deprecates amuleweb upstream, but both can
+  # run at once, on separate ports. Behind a compose profile because a 3.0.1
+  # image has no amuleapi binary and the container would just crash-loop:
+  # enable it with COMPOSE_PROFILES=amuleapi in .env.
+  amuleapi:
+    image: amule:${AMULE_IMAGE_TAG:-3.0.1}
+    command: ["amuleapi"]
+    container_name: amuleapi
+    profiles: ["amuleapi"]
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      amuled:
+        condition: service_healthy
+    ports:
+      - "${AMULEAPI_PORT:-4713}:${AMULEAPI_PORT:-4713}/tcp"
+    volumes:
+      # amuleapi keeps amuleapi.conf, amuleapi-passwords and its jwt secret
+      # alongside amuled's config, so it needs the same /config volume.
+      - "${AMULE_CONFIG_DIR:-./data/config}:/config"
+    healthcheck:
+      # /api/v0/health needs no login and answers from amuleapi's own state
+      # without waiting on amuled.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:$${AMULEAPI_PORT:-4713}/api/v0/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      autoheal: "true"
+
   # Docker/Compose doesn't restart "unhealthy" containers on its own:
   # autoheal watches containers labeled autoheal=true and restarts them.
   autoheal:
