@@ -182,10 +182,10 @@ apply_categories() {
 
 # amuleapi.conf lives next to amule.conf in $CONFIG_DIR and is a different
 # file with a different format: plain [Section] Key=value read by
-# wxFileConfig, but the EC password goes in CLEARTEXT (amuleapi has no
-# --password flag on purpose: a password in argv is visible to every user
-# on the machine through ps). amuleapi refuses to load the file unless it
-# is mode 0600, so every write here is followed by a chmod.
+# wxFileConfig. The EC password goes in as [EC] PasswordMD5 (3.2.0+), never
+# on the command line (amuleapi has no --password flag on purpose: argv is
+# visible to every user on the machine through ps). amuleapi refuses to load
+# the file unless it is mode 0600, so every write here is followed by a chmod.
 API_CONF="$CONFIG_DIR/amuleapi.conf"
 
 set_api_conf() {
@@ -205,7 +205,7 @@ StaticRoot=
 [EC]
 Host=127.0.0.1
 Port=4712
-Password=
+PasswordMD5=
 Encryption=1
 EOF
     )
@@ -264,13 +264,13 @@ case "$ROLE" in
             --template="${AMULEWEB_TEMPLATE:-default}"
         ;;
     amuleapi)
-        # The REST API + the new web frontend (master only; 3.0.1 has no
-        # amuleapi binary). Talks to amuled over EC like amuleweb does, but
+        # The REST API + the new web frontend (3.1.0+ binary; this role needs
+        # 3.2.0+ for [EC] PasswordMD5). Talks to amuled over EC like amuleweb does, but
         # listens on its own port and serves the SPA from amuleapi-static.
         if ! command -v amuleapi > /dev/null 2>&1; then
             log "ERROR: this image has no amuleapi binary."
-            log "       It only exists in aMule master: set AMULE_VERSION=master in .env,"
-            log "       bump AMULE_GIT_REFRESH and rebuild (docker compose build)."
+            log "       It needs aMule 3.2.0 or later: set AMULE_VERSION=3.2.0 in .env"
+            log "       and rebuild (docker compose build)."
             exit 1
         fi
         if [[ -z "${EXTERNALCONNECT__ECPASSWORD:-}" || -z "${AMULEAPI_ADMIN_PASSWORD:-}" ]]; then
@@ -287,18 +287,15 @@ case "$ROLE" in
         EC_HOST="${EC_HOST:-amuled}"
         EC_PORT="${EXTERNALCONNECT__ECPORT:-4712}"
         API_PORT="${AMULEAPI_PORT:-4713}"
-        # wxFileConfig expands $VAR in values unless the reader turns it off,
-        # and amuleapi's reader doesn't — a dollar sign in the EC password
-        # would come back as something else and the login would fail.
-        if [[ "$EXTERNALCONNECT__ECPASSWORD" == *'$'* ]]; then
-            log "WARN: the EC password contains '\$'; amuleapi reads amuleapi.conf with"
-            log "      wxFileConfig, which expands \$VAR in values. Use a password without"
-            log "      dollar signs if amuleapi can't log in to amuled."
-        fi
         [[ -f "$API_CONF" ]] || seed_api_config
         set_api_conf EC Host "$EC_HOST"
         set_api_conf EC Port "$EC_PORT"
-        set_api_conf EC Password "$EXTERNALCONNECT__ECPASSWORD"
+        # The hash rather than the cleartext: nothing readable is left on disk,
+        # and a hex digest sidesteps wxFileConfig's $VAR expansion of values.
+        # amuleapi rejects a conf with both keys set, so the cleartext one an
+        # older version of this entrypoint wrote is emptied.
+        set_api_conf EC Password ""
+        set_api_conf EC PasswordMD5 "$(md5 "$EXTERNALCONNECT__ECPASSWORD")"
         set_api_conf Server Port "$API_PORT"
         # --bind on the command line already forces this, but a conf still
         # reading 127.0.0.1 while the daemon listens on 0.0.0.0 is a trap for

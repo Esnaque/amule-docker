@@ -4,11 +4,11 @@ services:
       context: .
       args:
         AMULE_REPO: ${AMULE_REPO:-https://github.com/amule-org/amule}
-        # A tag (3.0.1) or a branch (master) to track upstream
-        AMULE_VERSION: ${AMULE_VERSION:-3.0.1}
+        # A tag (3.2.0) or a branch (master) to track upstream
+        AMULE_VERSION: ${AMULE_VERSION:-3.2.0}
         # Bump when AMULE_VERSION is a branch, or the clone stays cached
         AMULE_GIT_REFRESH: ${AMULE_GIT_REFRESH:-}
-    image: amule:${AMULE_IMAGE_TAG:-3.0.1}
+    image: amule:${AMULE_IMAGE_TAG:-3.2.0}
     container_name: amuled
     command: ["amuled"]
     init: true
@@ -36,7 +36,7 @@ services:
       autoheal: "true"
 
   amuleweb:
-    image: amule:${AMULE_IMAGE_TAG:-3.0.1}
+    image: amule:${AMULE_IMAGE_TAG:-3.2.0}
     container_name: amuleweb
     command: ["amuleweb"]
     init: true
@@ -56,13 +56,13 @@ services:
     labels:
       autoheal: "true"
 
-  # The new web UI (aMule master only): a REST API + SSE daemon that also
-  # serves its own frontend at /. Deprecates amuleweb upstream, but both can
-  # run at once, on separate ports. Behind a compose profile because a 3.0.1
-  # image has no amuleapi binary and the container would just crash-loop:
-  # enable it with COMPOSE_PROFILES=amuleapi in .env.
+  # The new web UI (aMule 3.2.0+): a REST API + SSE daemon that also serves
+  # its own frontend at /. Deprecates amuleweb upstream, but both can run at
+  # once, on separate ports. Behind a compose profile because it needs an
+  # admin password and an older image has no amuleapi binary: enable it with
+  # COMPOSE_PROFILES=amuleapi in .env.
   amuleapi:
-    image: amule:${AMULE_IMAGE_TAG:-3.0.1}
+    image: amule:${AMULE_IMAGE_TAG:-3.2.0}
     command: ["amuleapi"]
     container_name: amuleapi
     profiles: ["amuleapi"]
@@ -79,9 +79,9 @@ services:
       # alongside amuled's config, so it needs the same /config volume.
       - "${AMULE_CONFIG_DIR:-./data/config}:/config"
     healthcheck:
-      # /api/v0/health needs no login and answers from amuleapi's own state
+      # /api/v1/health needs no login and answers from amuleapi's own state
       # without waiting on amuled.
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:$${AMULEAPI_PORT:-4713}/api/v0/health"]
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:$${AMULEAPI_PORT:-4713}/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3

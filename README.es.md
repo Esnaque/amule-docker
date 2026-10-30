@@ -3,7 +3,7 @@
 [English](README.md) | **Español**
 
 Stack de Docker Compose que compila [aMule](https://github.com/amule-org/amule)
-(3.0.1 por defecto, [cualquier tag o rama](#qué-versión-de-amule-se-compila))
+(3.2.0 por defecto, [cualquier tag o rama](#qué-versión-de-amule-se-compila))
 desde el código fuente y levanta:
 
 - **amuled** — el daemon de aMule (redes eD2k y Kad)
@@ -28,8 +28,8 @@ Interfaz web: http://localhost:4711 (contraseña: `WEBSERVER__PASSWORD`).
 La imagen se compila desde el código fuente, y `.env` decide qué código:
 
 ```
-AMULE_VERSION=3.0.1        # un tag de release...
-AMULE_IMAGE_TAG=3.0.1      # ...y el tag que se le pone a la imagen construida
+AMULE_VERSION=3.2.0        # un tag de release...
+AMULE_IMAGE_TAG=3.2.0      # ...y el tag que se le pone a la imagen construida
 ```
 
 Para seguir el desarrollo de upstream en vez de una release, apúntalo a una rama:
@@ -65,19 +65,16 @@ Compilar master es compilar código sin probar: guarda una copia de tu carpeta
 
 ## La interfaz web nueva (amuleapi)
 
-aMule master incluye **amuleapi**, un daemon aparte que sirve una API REST
+aMule 3.2.0 incluye **amuleapi**, un daemon aparte que sirve una API REST
 JSON, un stream de eventos en vivo y —lo que se ve— una interfaz web nueva en
 su propio puerto. Upstream da amuleweb por obsoleto en favor suyo («may be
 removed in aMule 3.2 or later»), pero aquí conviven, así que puedes quedarte
 con la vieja mientras pruebas la nueva.
 
-Sólo existe en master, así que hacen falta dos cosas: compilar master y activar
-el perfil de compose que levanta el contenedor.
+Es opcional: hace falta activar el perfil de compose que levanta el contenedor
+y ponerle una contraseña de admin.
 
 ```
-AMULE_VERSION=master
-AMULE_IMAGE_TAG=master
-AMULE_GIT_REFRESH=2026-08-27
 COMPOSE_PROFILES=amuleapi
 AMULEAPI_ADMIN_PASSWORD=cambiame
 ```
@@ -98,14 +95,20 @@ http://localhost:4711.
 - Las contraseñas se guardan con sal y stretching en
   `/config/amuleapi-passwords` y no se pueden leer, sólo reemplazar — el
   entrypoint las reescribe desde `.env` en cada arranque.
-- Evita el `$` en `AMULEAPI_ADMIN_PASSWORD` y `EXTERNALCONNECT__ECPASSWORD`: la
-  contraseña EC tiene que guardarse en claro en `/config/amuleapi.conf`
-  (amuleapi no tiene flag `--password` a propósito: argv lo ve cualquiera con
-  `ps`), y el lector expande `$VAR` en los valores. El entrypoint avisa si
-  encuentra uno.
-- Sin `COMPOSE_PROFILES=amuleapi` el servicio ni se arranca, así que una
-  instalación normal de 3.0.1 no se ve afectada. Una imagen de 3.0.1 no tiene
-  el binario amuleapi; si aun así levantas el servicio, sale con un error
+- La contraseña EC le llega a amuleapi como hash MD5 en `/config/amuleapi.conf`
+  (`[EC] PasswordMD5`, modo 0600), no por línea de comandos, donde `ps` se la
+  enseñaría a cualquiera. Si una versión anterior de este stack dejó ahí un
+  `Password` en claro, se vacía al arrancar.
+- Desde 3.2.0, amuleapi (y amulegui, o cualquier cliente EC) sólo puede apuntar
+  las carpetas de entrada, temporal, compartidas o de categorías a rutas que
+  estén en `/config/allowed-remote-dirs.dat`, una ruta absoluta del contenedor
+  por línea. La lista empieza vacía, así que ese cambio da
+  `403 path_not_allowed` hasta que añadas la ruta y reinicies amuled. Las
+  carpetas ya configuradas, incluidas las `CATEGORY_N_*` de `.env`, siguen
+  funcionando.
+- Sin `COMPOSE_PROFILES=amuleapi` el servicio ni se arranca. Este servicio
+  necesita una imagen 3.2.0 o posterior (las anteriores o no tienen el binario
+  amuleapi o no entienden `PasswordMD5`); sin binario sale con un error
   explicativo en vez de quedarse reiniciándose en bucle.
 
 Como amuleweb, es HTTP sin TLS: vale para una LAN de confianza; si no, ponle
@@ -182,14 +185,14 @@ detecta.
 | 4662     | TCP       | amuled   | eD2k (ábrelo/redirígelo en el router para tener ID alta) |
 | 4672     | UDP       | amuled   | Kad y extended server requests         |
 | 4711     | TCP       | amuleweb | interfaz web antigua                   |
-| 4713     | TCP       | amuleapi | interfaz web nueva + API REST (builds de master, `COMPOSE_PROFILES=amuleapi`) |
+| 4713     | TCP       | amuleapi | interfaz web nueva + API REST (`COMPOSE_PROFILES=amuleapi`) |
 | 4712     | TCP       | amuled   | EC — interno; descomenta el mapeo en el compose solo si quieres usar amulegui remoto |
 
 ## Healthchecks
 
 - **amuled**: `amulecmd -c status` contra el puerto EC.
 - **amuleweb**: `curl` a la propia interfaz web.
-- **amuleapi**: `curl` a `/api/v0/health`, que no necesita login y responde sin
+- **amuleapi**: `curl` a `/api/v1/health`, que no necesita login y responde sin
   depender de amuled.
 
 Si un healthcheck falla 3 veces seguidas el contenedor pasa a `unhealthy` y

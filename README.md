@@ -3,7 +3,7 @@
 **English** | [Español](README.es.md)
 
 Docker Compose stack that builds [aMule](https://github.com/amule-org/amule)
-from source (3.0.1 by default, [any tag or branch](#which-amule-version-gets-built))
+from source (3.2.0 by default, [any tag or branch](#which-amule-version-gets-built))
 and runs:
 
 - **amuled** — the aMule daemon (eD2k and Kad networks)
@@ -28,8 +28,8 @@ Web interface: http://localhost:4711 (password: `WEBSERVER__PASSWORD`).
 The image is built from source, and `.env` decides which source:
 
 ```
-AMULE_VERSION=3.0.1        # a release tag...
-AMULE_IMAGE_TAG=3.0.1      # ...and the tag given to the built image
+AMULE_VERSION=3.2.0        # a release tag...
+AMULE_IMAGE_TAG=3.2.0      # ...and the tag given to the built image
 ```
 
 To follow upstream development instead of a release, point it at a branch:
@@ -64,19 +64,16 @@ the release build won't read back.
 
 ## The new web UI (amuleapi)
 
-aMule master ships **amuleapi**, a separate daemon serving a JSON REST API,
+aMule 3.2.0 ships **amuleapi**, a separate daemon serving a JSON REST API,
 a live event stream, and — the visible part — a new web frontend on its own
 port. Upstream deprecates amuleweb in its favour ("may be removed in aMule 3.2
 or later"), but the two run side by side here, so you can keep the old one
 while you try the new one.
 
-It only exists in master, so it takes two things: a master build, and the
-compose profile that starts the container.
+It is opt-in: it takes the compose profile that starts the container and an
+admin password.
 
 ```
-AMULE_VERSION=master
-AMULE_IMAGE_TAG=master
-AMULE_GIT_REFRESH=2026-08-27
 COMPOSE_PROFILES=amuleapi
 AMULEAPI_ADMIN_PASSWORD=changeme
 ```
@@ -97,15 +94,20 @@ http://localhost:4711.
 - Passwords are stored salted and stretched in `/config/amuleapi-passwords`
   and can't be read back, only replaced — the entrypoint rewrites them from
   `.env` on every start.
-- Avoid `$` in `AMULEAPI_ADMIN_PASSWORD` and `EXTERNALCONNECT__ECPASSWORD`:
-  the EC password has to be stored in cleartext in `/config/amuleapi.conf`
-  (amuleapi has no `--password` flag on purpose — argv is world-readable via
-  `ps`), and the reader expands `$VAR` in values. The entrypoint warns if it
-  finds one.
-- Without `COMPOSE_PROFILES=amuleapi` the service is simply not started, which
-  is why a plain 3.0.1 setup is unaffected. A 3.0.1 image has no amuleapi
-  binary; if you start the service anyway it exits with an explanatory error
-  instead of crash-looping silently.
+- The EC password reaches amuleapi as an MD5 hash in `/config/amuleapi.conf`
+  (`[EC] PasswordMD5`, mode 0600), not on the command line, where `ps` would
+  show it to everyone. A cleartext `Password` left there by an older version
+  of this stack is emptied on start.
+- Since 3.2.0, amuleapi (and amulegui, or any EC client) can only point the
+  incoming, temp, shared or category folders at paths listed in
+  `/config/allowed-remote-dirs.dat`, one absolute container path per line. The
+  list starts empty, so such a change gets `403 path_not_allowed` until you add
+  the path and restart amuled. Folders already configured, including the
+  `CATEGORY_N_*` ones set from `.env`, keep working.
+- Without `COMPOSE_PROFILES=amuleapi` the service is simply not started. This
+  service needs a 3.2.0 or newer image (older ones either have no amuleapi
+  binary or don't understand `PasswordMD5`); with no binary it exits with an
+  explanatory error instead of crash-looping silently.
 
 Like amuleweb, it is plain HTTP with no TLS: fine on a trusted LAN, otherwise
 put a reverse proxy in front of it.
@@ -182,14 +184,14 @@ this.
 | 4662     | TCP       | amuled   | eD2k (open/forward it on your router to get a high ID) |
 | 4672     | UDP       | amuled   | Kad and extended server requests       |
 | 4711     | TCP       | amuleweb | old web interface                      |
-| 4713     | TCP       | amuleapi | new web UI + REST API (master builds, `COMPOSE_PROFILES=amuleapi`) |
+| 4713     | TCP       | amuleapi | new web UI + REST API (`COMPOSE_PROFILES=amuleapi`) |
 | 4712     | TCP       | amuled   | EC — internal; uncomment the mapping in the compose file only if you want to use a remote amulegui |
 
 ## Healthchecks
 
 - **amuled**: `amulecmd -c status` against the EC port.
 - **amuleweb**: `curl` against the web interface itself.
-- **amuleapi**: `curl` against `/api/v0/health`, which needs no login and
+- **amuleapi**: `curl` against `/api/v1/health`, which needs no login and
   answers without waiting on amuled.
 
 If a healthcheck fails 3 times in a row the container goes `unhealthy` and
