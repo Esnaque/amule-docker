@@ -1,9 +1,12 @@
-# aMule 3 (amuled + amuleweb + amulecmd) from the official amule-org repo.
+# aMule 3 (amuled + amuleweb + amulecmd + amuleapi) from the official amule-org repo.
 # Multi-stage: builds with CMake and leaves a slim runtime image.
 
 # trixie and not bookworm: aMule 3 needs wxWidgets with wxUSE_WEBREQUEST=1
 # (libcurl backend); bookworm's wx 3.2.2 ships with it disabled, trixie's
 # 3.2.8 enables it.
+# python3: since 3.1.0 configure requires it on Linux (it generates the
+# AppStream metainfo from the changelog). libglib2.0-dev happens to pull it
+# in already; it is listed so that doesn't have to keep being true.
 FROM debian:trixie-slim AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,12 +23,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng-dev \
         libupnp-dev \
         gettext \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 ARG AMULE_REPO=https://github.com/amule-org/amule
-# Anything git can check out with --branch: a release tag (3.0.1) or a moving
+# Anything git can check out with --branch: a release tag (3.2.0) or a moving
 # branch (master) to build the latest upstream code.
-ARG AMULE_VERSION=3.0.1
+ARG AMULE_VERSION=3.2.0
 # Cache buster for moving branches: the git clone layer is cached like any
 # other, so without changing this Docker would keep rebuilding the commit it
 # cloned the first time. Change the value (a date, a commit hash, anything) to
@@ -40,12 +44,14 @@ RUN git clone --depth 1 --branch "${AMULE_VERSION}" "${AMULE_REPO}" /src \
 # ENABLE_IP2COUNTRY defaults to ON since 3.0.1 and hard-fails at configure
 # without libmaxminddb; the country flags are GUI-only (they never reach
 # amuled or the WebUI), so we opt out instead of pulling in the dependency.
-# DEFAULT_VERSION_CHECK=OFF is the upstream recommendation for packagers:
-# it only sets the initial value of [eMule] NewVersionCheck, which can still
-# be flipped with EMULE__NEWVERSIONCHECK=1.
+# ENABLE_VERSION_CHECK=OFF compiles the "new version available" check
+# out entirely, as upstream recommends for packaged builds: updates come from
+# rebuilding the image (3.1.0+). 3.0.x called it DEFAULT_VERSION_CHECK and only
+# seeded [eMule] NewVersionCheck; both are passed so any ref gets it off, and
+# whichever one the source doesn't know is ignored with a warning.
 # BUILD_AMULEAPI=ON builds the amuleapi daemon (REST API + the new web
 # frontend, installed as share/amule/amuleapi-static). It defaults to NO and
-# only exists on master; on a 3.0.1 build the flag is simply ignored.
+# exists since 3.1.0; on a 3.0.x build the flag is simply ignored.
 RUN cmake -B /build /src \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_MONOLITHIC=OFF \
@@ -55,6 +61,7 @@ RUN cmake -B /build /src \
         -DBUILD_AMULECMD=ON \
         -DENABLE_UPNP=ON \
         -DENABLE_IP2COUNTRY=NO \
+        -DENABLE_VERSION_CHECK=OFF \
         -DDEFAULT_VERSION_CHECK=OFF \
         -DBUILD_AMULEAPI=ON \
     && cmake --build /build -j"$(nproc)" \
@@ -81,8 +88,8 @@ COPY --from=build /out/usr/local /usr/local
 COPY --from=build /amule-build-info /etc/amule-build-info
 
 # Verify the binaries have all their libraries resolved. amuleapi is optional:
-# BUILD_AMULEAPI only exists in master (3.0.1 ignores it with a "manually-
-# specified variable was not used" warning), so a release build has no such
+# BUILD_AMULEAPI only exists since 3.1.0 (3.0.x ignores it with a "manually-
+# specified variable was not used" warning), so an older build has no such
 # binary and must not fail here.
 RUN ldd /usr/local/bin/amuled /usr/local/bin/amuleweb /usr/local/bin/amulecmd \
         | { ! grep "not found"; } \
@@ -90,7 +97,7 @@ RUN ldd /usr/local/bin/amuled /usr/local/bin/amuleweb /usr/local/bin/amulecmd \
         ldd /usr/local/bin/amuleapi | { ! grep "not found"; }; \
         echo "amuleapi built (REST API + web frontend available)"; \
     else \
-        echo "amuleapi not built (only exists in master); the amuleapi service will not work"; \
+        echo "amuleapi not built (needs aMule 3.1.0 or later); the amuleapi service will not work"; \
     fi
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
